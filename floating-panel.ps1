@@ -322,14 +322,26 @@ function Brush($hex) {
   return New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($hex))
 }
 
+function Set-PanelShadow([bool]$enabled) {
+  if ($enabled) {
+    $shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
+    $shadow.Color = [System.Windows.Media.ColorConverter]::ConvertFromString("#334155")
+    $shadow.Opacity = 0.18
+    $shadow.BlurRadius = 22
+    $shadow.ShadowDepth = 5
+    $Chrome.Effect = $shadow
+  } else {
+    $Chrome.Effect = $null
+  }
+}
+
 function Show-MonitorWindow {
   if (-not $window.IsVisible) {
     $window.Show()
   }
-  if ($script:isFloating) {
-    Apply-Language
-    Apply-FloatingMode
-  }
+  $script:isFloating = $false
+  Apply-Language
+  Apply-FloatingMode
   $window.Activate()
 }
 
@@ -434,6 +446,7 @@ function Fit-WindowToCurrentScreen {
 
 function Apply-FloatingMode {
   if ($script:isFloating) {
+    Set-PanelShadow $false
     $HeaderRow.Height = New-Object System.Windows.GridLength 46
     $SummaryRow.Height = New-Object System.Windows.GridLength 0
     $ContentRow.Height = New-Object System.Windows.GridLength 0
@@ -468,6 +481,7 @@ function Apply-FloatingMode {
   $window.MaxHeight = [Double]::PositiveInfinity
   $window.MinWidth = 420
   $window.MinHeight = 320
+  Set-PanelShadow $true
   $HeaderRow.Height = New-Object System.Windows.GridLength 78
   $ContentRow.Height = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
   $ContentArea.Visibility = "Visible"
@@ -882,7 +896,7 @@ $Chrome.Add_MouseMove({ param($sender, $eventArgs) Handle-PanelMouseMove $sender
 $Header.Add_MouseLeftButtonUp({ param($sender, $eventArgs) Handle-PanelMouseUp $sender $eventArgs })
 $Chrome.Add_MouseLeftButtonUp({ param($sender, $eventArgs) Handle-PanelMouseUp $sender $eventArgs })
 $MinButton.Add_Click({ Collapse-ToFloatingIcon })
-$CloseButton.Add_Click({ Collapse-ToFloatingIcon })
+$CloseButton.Add_Click({ $window.Hide() })
 $PinButton.Add_MouseLeftButtonUp({
   $window.Topmost = -not $window.Topmost
   $PinButton.Foreground = if ($window.Topmost) { Brush "#009B63" } else { Brush "#64748B" }
@@ -920,7 +934,7 @@ $window.Add_Closing({
   param($sender, $eventArgs)
   if (-not $script:isExiting) {
     $eventArgs.Cancel = $true
-    Collapse-ToFloatingIcon
+    $window.Hide()
   }
 })
 
@@ -934,6 +948,9 @@ $window.Add_Closed({
   }
   $mutex.ReleaseMutex()
   $mutex.Dispose()
+  if ($script:app) { $script:app.Shutdown() }
 })
 
-$window.ShowDialog() | Out-Null
+$script:app = New-Object System.Windows.Application
+$script:app.ShutdownMode = [System.Windows.ShutdownMode]::OnExplicitShutdown
+$script:app.Run($window) | Out-Null
