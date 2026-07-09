@@ -4,6 +4,7 @@ Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
 
 $createdMutex = $false
 $mutex = New-Object System.Threading.Mutex($true, "LocalWebMonitorFloatingPanel", [ref]$createdMutex)
@@ -39,6 +40,13 @@ $script:I18n = @{
     Scanning = (Z "5q2j5Zyo5omr5o+PLi4u")
     LocalPage = (Z "5pys5Zyw572R6aG1")
     JustNow = (Z "5Yia5Yia")
+    Compact = (Z "57Sn5YeR")
+    Expand = (Z "5bGV5byA")
+    Float = (Z "5oKs5rWu")
+    List = (Z "5YiX6KGo")
+    ClickOpen = (Z "54K55Ye75omT5byA")
+    Show = (Z "5pi+56S6")
+    Exit = (Z "6YCA5Ye6")
   }
   en = @{
     AppTitle = "Local Web Monitor"
@@ -65,6 +73,13 @@ $script:I18n = @{
     Scanning = "Scanning..."
     LocalPage = "Local page"
     JustNow = "just now"
+    Compact = "Compact"
+    Expand = "Expand"
+    Float = "Float"
+    List = "List"
+    ClickOpen = "Click to open"
+    Show = "Show"
+    Exit = "Exit"
   }
 }
 
@@ -83,6 +98,16 @@ $script:lastScanStarted = [DateTime]::MinValue
 $script:lastUpdated = $null
 $script:scanJob = $null
 $script:scanIntervalMs = 3000
+$script:isCompact = $true
+$script:isFloating = $true
+$script:floatingMouseDown = $false
+$script:floatingWasDragged = $false
+$script:floatingDownPoint = $null
+$script:floatingDownAt = [DateTime]::MinValue
+$script:fitAnchorX = $null
+$script:fitAnchorY = $null
+$script:trayIcon = $null
+$script:isExiting = $false
 
 function New-SolidBrush($color) {
   return New-Object System.Drawing.SolidBrush([System.Drawing.ColorTranslator]::FromHtml($color))
@@ -140,6 +165,20 @@ function ImageSource($path) {
   return $img
 }
 
+function Open-LocalUrl([string]$url) {
+  if ([string]::IsNullOrWhiteSpace($url)) { return }
+  try {
+    Start-Process -FilePath "explorer.exe" -ArgumentList $url | Out-Null
+  } catch {
+    try {
+      $psi = New-Object System.Diagnostics.ProcessStartInfo
+      $psi.FileName = $url
+      $psi.UseShellExecute = $true
+      [System.Diagnostics.Process]::Start($psi) | Out-Null
+    } catch {}
+  }
+}
+
 function XamlReader($xaml) {
   $reader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
   return [Windows.Markup.XamlReader]::Load($reader)
@@ -148,45 +187,52 @@ function XamlReader($xaml) {
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Local Web Monitor" Width="560" Height="680" MinWidth="520" MinHeight="560"
-        WindowStyle="None" ResizeMode="CanResizeWithGrip" AllowsTransparency="True"
-        Background="Transparent" Topmost="True" ShowInTaskbar="True">
-  <Border x:Name="Chrome" Margin="6" CornerRadius="14" Background="#F8FAFC" BorderBrush="#D8E0EA" BorderThickness="1">
+        Title="Local Web Monitor" Width="62" Height="58" MinWidth="56" MinHeight="52"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
+        Background="Transparent" Topmost="True" ShowInTaskbar="False">
+  <Border x:Name="Chrome" Margin="4" CornerRadius="13" Background="#F8FAFC" BorderBrush="#D8E0EA" BorderThickness="1">
     <Border.Effect>
       <DropShadowEffect Color="#334155" Opacity="0.18" BlurRadius="22" ShadowDepth="5"/>
     </Border.Effect>
     <Grid>
       <Grid.RowDefinitions>
-        <RowDefinition Height="78"/>
-        <RowDefinition Height="116"/>
-        <RowDefinition Height="*"/>
-        <RowDefinition Height="34"/>
+        <RowDefinition x:Name="HeaderRow" Height="46"/>
+        <RowDefinition x:Name="SummaryRow" Height="116"/>
+        <RowDefinition x:Name="ContentRow" Height="*"/>
+        <RowDefinition x:Name="FooterRow" Height="34"/>
       </Grid.RowDefinitions>
 
-      <Grid x:Name="Header" Grid.Row="0" Margin="18,12,18,0">
+      <Grid x:Name="Header" Grid.Row="0" Margin="9,5,9,5">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="44"/>
-          <ColumnDefinition Width="210"/>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="210"/>
+          <ColumnDefinition Width="34"/>
+          <ColumnDefinition x:Name="TitleColumn" Width="*"/>
+          <ColumnDefinition x:Name="SpacerColumn" Width="0"/>
+          <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <Border Width="42" Height="42" CornerRadius="21" Background="#E8F7F0" VerticalAlignment="Center">
-          <Image x:Name="LogoImage" Width="36" Height="36"/>
-        </Border>
-        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-          <TextBlock x:Name="TitleText" FontSize="17" FontWeight="Bold" Foreground="#111827" LineHeight="22"/>
+        <Grid Width="34" Height="34" VerticalAlignment="Center">
+          <Border Width="34" Height="34" CornerRadius="17" Background="#E8F7F0" VerticalAlignment="Center">
+            <Image x:Name="LogoImage" Width="30" Height="30" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True"/>
+          </Border>
+          <Border x:Name="FloatingCountBadge" Width="17" Height="17" CornerRadius="8.5" Background="#10B981" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,0,0">
+            <TextBlock x:Name="FloatingCountText" Text="0" FontSize="10" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+        </Grid>
+        <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+          <TextBlock x:Name="TitleText" FontSize="15" FontWeight="Bold" Foreground="#111827" LineHeight="20"/>
           <TextBlock x:Name="SubtitleText" FontSize="12" Foreground="#64748B" Margin="0,3,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,0,0">
-          <Label x:Name="PinButton" Width="42" Height="30" Margin="0,0,8,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
-          <Label x:Name="ScanButton" Width="42" Height="30" Margin="0,0,8,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
-          <Label x:Name="LangButton" Width="58" Height="30" Margin="0,0,8,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" FontWeight="Bold" Cursor="Hand"/>
+          <Label x:Name="FloatButton" Width="42" Height="30" Margin="0,0,3,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
+          <Label x:Name="CompactButton" Width="42" Height="30" Margin="0,0,3,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
+          <Label x:Name="PinButton" Width="34" Height="30" Margin="0,0,4,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
+          <Label x:Name="ScanButton" Width="34" Height="30" Margin="0,0,4,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
+          <Label x:Name="LangButton" Width="42" Height="30" Margin="0,0,3,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="11" FontWeight="Bold" Cursor="Hand"/>
           <Button x:Name="MinButton" Content="-" Width="24" Height="30" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="Transparent" BorderThickness="0" Foreground="#64748B" FontSize="18" Cursor="Hand"/>
           <Button x:Name="CloseButton" Content="X" Width="24" Height="30" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="Transparent" BorderThickness="0" Foreground="#475569" FontSize="14" Cursor="Hand"/>
         </StackPanel>
       </Grid>
 
-      <Border Grid.Row="1" Margin="18,0,18,12" CornerRadius="13" Background="#FFFFFF" BorderBrush="#DDE5EF" BorderThickness="1">
+      <Border x:Name="SummaryCard" Grid.Row="1" Margin="18,0,18,12" CornerRadius="13" Background="#FFFFFF" BorderBrush="#DDE5EF" BorderThickness="1">
         <Grid Margin="18,14">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="138"/>
@@ -219,11 +265,11 @@ $xaml = @"
         </Grid>
       </Border>
 
-      <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,2,0">
+      <ScrollViewer x:Name="ContentArea" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,2,0">
         <StackPanel x:Name="ServiceStack" Margin="18,0,18,0"/>
       </ScrollViewer>
 
-      <Grid Grid.Row="3" Margin="18,0,18,0">
+      <Grid x:Name="FooterBar" Grid.Row="3" Margin="18,0,18,0">
         <TextBlock x:Name="FooterText" VerticalAlignment="Center" FontSize="12" Foreground="#64748B"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
           <Ellipse Width="8" Height="8" Fill="#10B981" Margin="0,0,8,0"/>
@@ -236,11 +282,24 @@ $xaml = @"
 "@
 
 $window = XamlReader $xaml
+$HeaderRow = $window.FindName("HeaderRow")
+$SummaryRow = $window.FindName("SummaryRow")
+$ContentRow = $window.FindName("ContentRow")
+$FooterRow = $window.FindName("FooterRow")
+$TitleColumn = $window.FindName("TitleColumn")
+$SpacerColumn = $window.FindName("SpacerColumn")
+$SummaryCard = $window.FindName("SummaryCard")
+$ContentArea = $window.FindName("ContentArea")
+$FooterBar = $window.FindName("FooterBar")
 $Chrome = $window.FindName("Chrome")
 $Header = $window.FindName("Header")
 $LogoImage = $window.FindName("LogoImage")
+$FloatingCountBadge = $window.FindName("FloatingCountBadge")
+$FloatingCountText = $window.FindName("FloatingCountText")
 $TitleText = $window.FindName("TitleText")
 $SubtitleText = $window.FindName("SubtitleText")
+$FloatButton = $window.FindName("FloatButton")
+$CompactButton = $window.FindName("CompactButton")
 $PinButton = $window.FindName("PinButton")
 $ScanButton = $window.FindName("ScanButton")
 $LangButton = $window.FindName("LangButton")
@@ -256,10 +315,180 @@ $HealthText = $window.FindName("HealthText")
 $ServiceStack = $window.FindName("ServiceStack")
 $FooterText = $window.FindName("FooterText")
 
-$LogoImage.Source = ImageSource (Join-Path $script:Assets "radar.png")
+$window.Icon = ImageSource (Join-Path $script:Assets "window-icon.png")
+$LogoImage.Source = ImageSource (Join-Path $script:Assets "panel-logo.png")
 
 function Brush($hex) {
   return New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($hex))
+}
+
+function Show-MonitorWindow {
+  if (-not $window.IsVisible) {
+    $window.Show()
+  }
+  if ($script:isFloating) {
+    Apply-Language
+    Apply-FloatingMode
+  }
+  $window.Activate()
+}
+
+function Collapse-ToFloatingIcon {
+  $script:isFloating = $true
+  Apply-Language
+  Apply-FloatingMode
+  if (-not $window.IsVisible) {
+    $window.Show()
+  }
+  $window.Activate()
+}
+
+function Initialize-TrayIcon {
+  if ($script:trayIcon) { return }
+  $iconPath = Join-Path $script:Assets "local-web-monitor.ico"
+  $script:trayIcon = New-Object System.Windows.Forms.NotifyIcon
+  $script:trayIcon.Icon = New-Object System.Drawing.Icon($iconPath)
+  $script:trayIcon.Text = "Local Web Monitor"
+  $script:trayIcon.Visible = $true
+
+  $menu = New-Object System.Windows.Forms.ContextMenuStrip
+  $showItem = New-Object System.Windows.Forms.ToolStripMenuItem
+  $showItem.Text = T "Show"
+  $scanItem = New-Object System.Windows.Forms.ToolStripMenuItem
+  $scanItem.Text = T "Scan"
+  $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem
+  $exitItem.Text = T "Exit"
+
+  $showItem.Add_Click({ $window.Dispatcher.Invoke([action]{ Show-MonitorWindow }) })
+  $scanItem.Add_Click({ $window.Dispatcher.Invoke([action]{ Start-ScanJob; Show-MonitorWindow }) })
+  $exitItem.Add_Click({
+    $window.Dispatcher.Invoke([action]{
+      $script:isExiting = $true
+      $window.Close()
+    })
+  })
+  $script:trayIcon.Add_DoubleClick({ $window.Dispatcher.Invoke([action]{ Show-MonitorWindow }) })
+
+  [void]$menu.Items.Add($showItem)
+  [void]$menu.Items.Add($scanItem)
+  [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+  [void]$menu.Items.Add($exitItem)
+  $script:trayIcon.ContextMenuStrip = $menu
+}
+
+function Apply-CompactMode {
+  if ($script:isFloating) { return }
+  if ($script:isCompact) {
+    $SummaryRow.Height = New-Object System.Windows.GridLength 0
+    $FooterRow.Height = New-Object System.Windows.GridLength 0
+    $SummaryCard.Visibility = "Collapsed"
+    $FooterBar.Visibility = "Collapsed"
+    $LangButton.Visibility = "Collapsed"
+    $CompactButton.Content = T "Expand"
+    if ($window.Height -gt 460) { $window.Height = 420 }
+    if ($window.Width -gt 540) { $window.Width = 520 }
+    Fit-WindowToCurrentScreen
+  } else {
+    $SummaryRow.Height = New-Object System.Windows.GridLength 116
+    $FooterRow.Height = New-Object System.Windows.GridLength 34
+    $SummaryCard.Visibility = "Visible"
+    $FooterBar.Visibility = "Visible"
+    $LangButton.Visibility = "Visible"
+    $CompactButton.Content = T "Compact"
+    if ($window.Height -lt 640) { $window.Height = 680 }
+    if ($window.Width -lt 620) { $window.Width = 620 }
+    Fit-WindowToCurrentScreen
+  }
+}
+
+function Fit-WindowToCurrentScreen {
+  try {
+    if ($null -ne $script:fitAnchorX -and $null -ne $script:fitAnchorY) {
+      $centerX = [double]$script:fitAnchorX
+      $centerY = [double]$script:fitAnchorY
+    } else {
+      $centerX = $window.Left + ($window.Width / 2)
+      $centerY = $window.Top + ($window.Height / 2)
+    }
+    $point = New-Object System.Drawing.Point ([int]$centerX), ([int]$centerY)
+    $screen = [System.Windows.Forms.Screen]::FromPoint($point)
+    $area = $screen.WorkingArea
+    $margin = 8
+
+    $minLeft = [double]$area.Left + $margin
+    $minTop = [double]$area.Top + $margin
+    $maxLeft = [double]$area.Right - [double]$window.Width - $margin
+    $maxTop = [double]$area.Bottom - [double]$window.Height - $margin
+
+    if ($maxLeft -lt $minLeft) { $maxLeft = $minLeft }
+    if ($maxTop -lt $minTop) { $maxTop = $minTop }
+
+    if ($window.Left -lt $minLeft) { $window.Left = $minLeft }
+    if ($window.Top -lt $minTop) { $window.Top = $minTop }
+    if ($window.Left -gt $maxLeft) { $window.Left = $maxLeft }
+    if ($window.Top -gt $maxTop) { $window.Top = $maxTop }
+  } catch {}
+  $script:fitAnchorX = $null
+  $script:fitAnchorY = $null
+}
+
+function Apply-FloatingMode {
+  if ($script:isFloating) {
+    $HeaderRow.Height = New-Object System.Windows.GridLength 46
+    $SummaryRow.Height = New-Object System.Windows.GridLength 0
+    $ContentRow.Height = New-Object System.Windows.GridLength 0
+    $FooterRow.Height = New-Object System.Windows.GridLength 0
+    $SummaryCard.Visibility = "Collapsed"
+    $ContentArea.Visibility = "Collapsed"
+    $FooterBar.Visibility = "Collapsed"
+    $FloatButton.Visibility = "Collapsed"
+    $CompactButton.Visibility = "Collapsed"
+    $PinButton.Visibility = "Collapsed"
+    $ScanButton.Visibility = "Collapsed"
+    $LangButton.Visibility = "Collapsed"
+    $MinButton.Visibility = "Collapsed"
+    $CloseButton.Visibility = "Collapsed"
+    $FloatingCountBadge.Visibility = "Visible"
+    $SubtitleText.Visibility = "Collapsed"
+    $TitleText.FontSize = 15
+    $TitleColumn.Width = New-Object System.Windows.GridLength 0
+    $SpacerColumn.Width = New-Object System.Windows.GridLength 0
+    $TitleText.Text = ""
+    $FloatingCountText.Text = [string]$script:services.Count
+    $window.MinWidth = 56
+    $window.MinHeight = 52
+    $window.MaxWidth = 62
+    $window.MaxHeight = 58
+    $window.Width = 62
+    $window.Height = 58
+    return
+  }
+
+  $window.MaxWidth = [Double]::PositiveInfinity
+  $window.MaxHeight = [Double]::PositiveInfinity
+  $window.MinWidth = 420
+  $window.MinHeight = 320
+  $HeaderRow.Height = New-Object System.Windows.GridLength 78
+  $ContentRow.Height = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
+  $ContentArea.Visibility = "Visible"
+  $FloatButton.Visibility = "Collapsed"
+  $CompactButton.Visibility = "Visible"
+  $PinButton.Visibility = "Visible"
+  $ScanButton.Visibility = "Visible"
+  $LangButton.Visibility = "Visible"
+  $MinButton.Visibility = "Visible"
+  $CloseButton.Visibility = "Visible"
+  $FloatingCountBadge.Visibility = "Collapsed"
+  $SubtitleText.Visibility = "Visible"
+  $TitleText.FontSize = 17
+  $TitleColumn.Width = New-Object System.Windows.GridLength 210
+  $SpacerColumn.Width = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
+  $TitleText.Text = T "AppTitle"
+  $SubtitleText.Text = T "Subtitle"
+  $window.Width = 620
+  $window.Height = 420
+  Apply-CompactMode
+  Fit-WindowToCurrentScreen
 }
 
 function SectionHeader($label, $count, $accent, $soft) {
@@ -354,15 +583,22 @@ function RowView($service, $kind) {
 
   $open = New-Object System.Windows.Controls.Button
   $open.Content = T "Open"; $open.Width = 58; $open.Height = 32; $open.Margin = "0,0,10,0"; $open.VerticalAlignment = "Center"; $open.HorizontalAlignment = "Right"; $open.Background = Brush "#FFFFFF"; $open.BorderBrush = Brush "#DDE5EF"; $open.Foreground = Brush "#111827"; $open.Cursor = "Hand"
-  $targetUrl = [string]$service.Url
-  $open.Add_Click({ param($sender,$eventArgs) Start-Process $targetUrl })
+  $open.Tag = [string]$service.Url
+  $open.Add_Click({
+    param($sender,$eventArgs)
+    Open-LocalUrl ([string]$sender.Tag)
+    $eventArgs.Handled = $true
+  })
   [System.Windows.Controls.Grid]::SetColumn($open, 4); $grid.Children.Add($open) | Out-Null
 
   $row.Add_MouseLeftButtonDown({
-    if ($_.ClickCount -ge 2) {
-      Start-Process ([string]$service.Url)
+    param($sender,$eventArgs)
+    if ($eventArgs.ClickCount -ge 2) {
+      Open-LocalUrl ([string]$sender.Tag)
+      $eventArgs.Handled = $true
     }
   })
+  $row.Tag = [string]$service.Url
   $row.Child = $grid
   return $row
 }
@@ -394,11 +630,19 @@ function EmptyView {
 }
 
 function Apply-Language {
+  if ($script:isFloating) {
+    $FloatButton.Content = T "List"
+    $CompactButton.Content = if ($script:isCompact) { T "Expand" } else { T "Compact" }
+    Apply-FloatingMode
+    return
+  }
   $TitleText.Text = T "AppTitle"
   $SubtitleText.Text = T "Subtitle"
+  $FloatButton.Content = T "Float"
+  $CompactButton.Content = if ($script:isCompact) { T "Expand" } else { T "Compact" }
   $PinButton.Content = T "Pin"
   $ScanButton.Content = T "Scan"
-  $LangButton.Content = if ($script:lang -eq "zh") { "$(Z '5Lit')  EN" } else { "ZH  EN" }
+  $LangButton.Content = if ($script:lang -eq "zh") { "$(Z '5Lit')/EN" } else { "ZH/EN" }
   $MonitoringText.Text = T "Monitoring"
   $AutoScanText.Text = T "AutoScan"
   $RunningText.Text = T "WebEntries"
@@ -543,6 +787,9 @@ function Poll-ScanJob {
     $script:lastPortCount = [int]$result.Ports
     $script:lastUpdated = Get-Date
     $RunningCountText.Text = [string]$script:services.Count
+    if ($script:isFloating) {
+      $FloatingCountText.Text = [string]$script:services.Count
+    }
     $LastUpdatedValue.Text = $script:lastUpdated.ToString("HH:mm:ss")
     $HealthText.Text = T "Healthy"
     $FooterText.Text = "$(T 'FooterScan')   |   $(T 'WebEntries') $($script:services.Count)"
@@ -558,26 +805,98 @@ function Try-DragWindow($eventArgs) {
     while ($node) {
       if ($node -is [System.Windows.Controls.Button]) { return }
       if ($node -is [System.Windows.Controls.TextBlock]) {
-        if ($node.Name -in @("PinButton", "ScanButton", "LangButton")) { return }
+        if ($node.Name -in @("FloatButton", "CompactButton", "PinButton", "ScanButton", "LangButton")) { return }
       }
       if ($node -is [System.Windows.FrameworkElement]) {
-        if ($node.Name -in @("PinButton", "ScanButton", "LangButton")) { return }
+        if ($node.Name -in @("FloatButton", "CompactButton", "PinButton", "ScanButton", "LangButton")) { return }
       }
       try { $node = [System.Windows.Media.VisualTreeHelper]::GetParent($node) } catch { $node = $null }
+    }
+    if ($eventArgs.ClickCount -ge 2) {
+      $script:isFloating = $true
+      Apply-Language
+      Apply-FloatingMode
+      $eventArgs.Handled = $true
+      return
     }
     try { $window.DragMove() } catch {}
   }
 }
 
-$Header.Add_MouseLeftButtonDown({ param($sender, $eventArgs) Try-DragWindow $eventArgs })
-$Chrome.Add_MouseLeftButtonDown({ param($sender, $eventArgs) Try-DragWindow $eventArgs })
-$MinButton.Add_Click({ $window.WindowState = "Minimized" })
-$CloseButton.Add_Click({ $window.Close() })
+function Expand-FloatingWindow {
+  $script:fitAnchorX = $window.Left + ($window.Width / 2)
+  $script:fitAnchorY = $window.Top + ($window.Height / 2)
+  $script:isFloating = $false
+  Apply-Language
+  Apply-FloatingMode
+}
+
+function Handle-PanelMouseDown($sender, $eventArgs) {
+  if ($script:isFloating -and $eventArgs.ChangedButton -eq [System.Windows.Input.MouseButton]::Left) {
+    if ($eventArgs.ClickCount -ge 2) {
+      Expand-FloatingWindow
+      $eventArgs.Handled = $true
+      return
+    }
+    $script:floatingMouseDown = $true
+    $script:floatingWasDragged = $false
+    $script:floatingDownPoint = $eventArgs.GetPosition($window)
+    $script:floatingDownAt = [DateTime]::UtcNow
+    try { $Chrome.CaptureMouse() | Out-Null } catch {}
+    $eventArgs.Handled = $true
+    return
+  }
+  Try-DragWindow $eventArgs
+}
+
+function Handle-PanelMouseMove($sender, $eventArgs) {
+  if (-not $script:isFloating -or -not $script:floatingMouseDown) { return }
+  if ([System.Windows.Input.Mouse]::LeftButton -ne [System.Windows.Input.MouseButtonState]::Pressed) { return }
+  $point = $eventArgs.GetPosition($window)
+  $dx = [Math]::Abs($point.X - $script:floatingDownPoint.X)
+  $dy = [Math]::Abs($point.Y - $script:floatingDownPoint.Y)
+  $heldMs = ([DateTime]::UtcNow - $script:floatingDownAt).TotalMilliseconds
+  if (($dx -gt 4 -or $dy -gt 4) -or $heldMs -gt 260) {
+    $script:floatingWasDragged = $true
+    $script:floatingMouseDown = $false
+    try { $Chrome.ReleaseMouseCapture() } catch {}
+    try { $window.DragMove() } catch {}
+    $eventArgs.Handled = $true
+  }
+}
+
+function Handle-PanelMouseUp($sender, $eventArgs) {
+  if (-not $script:isFloating -or -not $script:floatingMouseDown) { return }
+  $script:floatingMouseDown = $false
+  try { $Chrome.ReleaseMouseCapture() } catch {}
+  $point = $eventArgs.GetPosition($window)
+  $dx = [Math]::Abs($point.X - $script:floatingDownPoint.X)
+  $dy = [Math]::Abs($point.Y - $script:floatingDownPoint.Y)
+  $eventArgs.Handled = $true
+}
+
+$Header.Add_MouseLeftButtonDown({ param($sender, $eventArgs) Handle-PanelMouseDown $sender $eventArgs })
+$Chrome.Add_MouseLeftButtonDown({ param($sender, $eventArgs) Handle-PanelMouseDown $sender $eventArgs })
+$Header.Add_MouseMove({ param($sender, $eventArgs) Handle-PanelMouseMove $sender $eventArgs })
+$Chrome.Add_MouseMove({ param($sender, $eventArgs) Handle-PanelMouseMove $sender $eventArgs })
+$Header.Add_MouseLeftButtonUp({ param($sender, $eventArgs) Handle-PanelMouseUp $sender $eventArgs })
+$Chrome.Add_MouseLeftButtonUp({ param($sender, $eventArgs) Handle-PanelMouseUp $sender $eventArgs })
+$MinButton.Add_Click({ Collapse-ToFloatingIcon })
+$CloseButton.Add_Click({ Collapse-ToFloatingIcon })
 $PinButton.Add_MouseLeftButtonUp({
   $window.Topmost = -not $window.Topmost
   $PinButton.Foreground = if ($window.Topmost) { Brush "#009B63" } else { Brush "#64748B" }
 })
 $ScanButton.Add_MouseLeftButtonUp({ Start-ScanJob })
+$FloatButton.Add_MouseLeftButtonUp({
+  $script:isFloating = -not $script:isFloating
+  Apply-Language
+  Apply-FloatingMode
+})
+$CompactButton.Add_MouseLeftButtonUp({
+  $script:isCompact = -not $script:isCompact
+  Apply-CompactMode
+})
 function Switch-Language {
   $script:lang = if ($script:lang -eq "zh") { "en" } else { "zh" }
   Apply-Language
@@ -591,13 +910,28 @@ $timer.Add_Tick({ Poll-ScanJob })
 $timer.Start()
 
 $window.Add_Loaded({
+  Initialize-TrayIcon
   Apply-Language
+  Apply-CompactMode
   Start-ScanJob
+})
+
+$window.Add_Closing({
+  param($sender, $eventArgs)
+  if (-not $script:isExiting) {
+    $eventArgs.Cancel = $true
+    Collapse-ToFloatingIcon
+  }
 })
 
 $window.Add_Closed({
   $timer.Stop()
   if ($script:scanJob) { Remove-Job $script:scanJob -Force | Out-Null }
+  if ($script:trayIcon) {
+    $script:trayIcon.Visible = $false
+    $script:trayIcon.Dispose()
+    $script:trayIcon = $null
+  }
   $mutex.ReleaseMutex()
   $mutex.Dispose()
 })
