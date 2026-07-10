@@ -46,6 +46,9 @@ $script:I18n = @{
     List = (Z "5YiX6KGo")
     ClickOpen = (Z "54K55Ye75omT5byA")
     Show = (Z "5pi+56S6")
+    CollapseToIcon = (Z "5pS26LW35Li65Zu+5qCH")
+    HideToTray = (Z "6ZqQ6JeP5Yiw5omY55uY")
+    SwitchLanguage = (Z "5YiH5o2i6K+t6KiA")
     Exit = (Z "6YCA5Ye6")
   }
   en = @{
@@ -79,6 +82,9 @@ $script:I18n = @{
     List = "List"
     ClickOpen = "Click to open"
     Show = "Show"
+    CollapseToIcon = "Collapse to icon"
+    HideToTray = "Hide to tray"
+    SwitchLanguage = "Switch language"
     Exit = "Exit"
   }
 }
@@ -190,6 +196,46 @@ $xaml = @"
         Title="Local Web Monitor" Width="62" Height="58" MinWidth="56" MinHeight="52"
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
         Background="Transparent" Topmost="True" ShowInTaskbar="False">
+  <Window.Resources>
+    <Style x:Key="HeaderActionButton" TargetType="{x:Type Button}">
+      <Setter Property="Width" Value="30"/>
+      <Setter Property="Height" Value="30"/>
+      <Setter Property="Margin" Value="0,0,4,0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Foreground" Value="#475569"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type Button}">
+            <Border x:Name="ButtonChrome" CornerRadius="6" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#E8F7F0"/>
+                <Setter Property="Foreground" Value="#00875A"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="#D5F2E4"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="CloseActionButton" TargetType="{x:Type Button}" BasedOn="{StaticResource HeaderActionButton}">
+      <Setter Property="Margin" Value="0"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#FEF2F2"/>
+          <Setter Property="Foreground" Value="#DC2626"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+  </Window.Resources>
   <Border x:Name="Chrome" Margin="4" CornerRadius="13" Background="#F8FAFC" BorderBrush="#D8E0EA" BorderThickness="1">
     <Border.Effect>
       <DropShadowEffect Color="#334155" Opacity="0.18" BlurRadius="22" ShadowDepth="5"/>
@@ -204,31 +250,40 @@ $xaml = @"
 
       <Grid x:Name="Header" Grid.Row="0" Margin="9,5,9,5">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="34"/>
+          <ColumnDefinition x:Name="LogoColumn" Width="34"/>
           <ColumnDefinition x:Name="TitleColumn" Width="*"/>
-          <ColumnDefinition x:Name="SpacerColumn" Width="0"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <Grid Width="34" Height="34" VerticalAlignment="Center">
-          <Border Width="34" Height="34" CornerRadius="17" Background="#E8F7F0" VerticalAlignment="Center">
+        <Grid x:Name="LogoHost" Width="34" Height="34" VerticalAlignment="Center">
+          <Border x:Name="LogoBackdrop" Width="34" Height="34" CornerRadius="17" Background="#E8F7F0" VerticalAlignment="Center">
             <Image x:Name="LogoImage" Width="30" Height="30" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True"/>
           </Border>
-          <Border x:Name="FloatingCountBadge" Width="17" Height="17" CornerRadius="8.5" Background="#10B981" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,0,0">
-            <TextBlock x:Name="FloatingCountText" Text="0" FontSize="10" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
         </Grid>
-        <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-          <TextBlock x:Name="TitleText" FontSize="15" FontWeight="Bold" Foreground="#111827" LineHeight="20"/>
-          <TextBlock x:Name="SubtitleText" FontSize="12" Foreground="#64748B" Margin="0,3,0,0"/>
-        </StackPanel>
-        <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,0,0">
-          <Label x:Name="FloatButton" Width="42" Height="30" Margin="0,0,3,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
-          <Label x:Name="CompactButton" Width="42" Height="30" Margin="0,0,3,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
-          <Label x:Name="PinButton" Width="34" Height="30" Margin="0,0,4,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
-          <Label x:Name="ScanButton" Width="34" Height="30" Margin="0,0,4,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="12" Cursor="Hand"/>
-          <Label x:Name="LangButton" Width="42" Height="30" Margin="0,0,3,0" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#009B63" BorderBrush="#C8D2DF" BorderThickness="1" FontSize="11" FontWeight="Bold" Cursor="Hand"/>
-          <Button x:Name="MinButton" Content="-" Width="24" Height="30" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="Transparent" BorderThickness="0" Foreground="#64748B" FontSize="18" Cursor="Hand"/>
-          <Button x:Name="CloseButton" Content="X" Width="24" Height="30" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Background="Transparent" BorderThickness="0" Foreground="#475569" FontSize="14" Cursor="Hand"/>
+        <Grid Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+          <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="15" FontWeight="Bold" Foreground="#111827" LineHeight="20" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="SubtitleText" Grid.Row="1" FontSize="12" Foreground="#64748B" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+        </Grid>
+        <StackPanel x:Name="HeaderActions" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button x:Name="DetailsButton" Style="{StaticResource HeaderActionButton}">
+            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8FD;" FontSize="14"/>
+          </Button>
+          <Button x:Name="PinButton" Style="{StaticResource HeaderActionButton}">
+            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE718;" FontSize="14" RenderTransformOrigin="0.5,0.5">
+              <TextBlock.RenderTransform>
+                <RotateTransform Angle="-90"/>
+              </TextBlock.RenderTransform>
+            </TextBlock>
+          </Button>
+          <Button x:Name="RefreshButton" Style="{StaticResource HeaderActionButton}">
+            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" FontSize="14"/>
+          </Button>
+          <Button x:Name="CloseButton" Style="{StaticResource CloseActionButton}">
+            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8BB;" FontSize="14"/>
+          </Button>
         </StackPanel>
       </Grid>
 
@@ -276,6 +331,14 @@ $xaml = @"
           <TextBlock Text="v1.0.0" FontSize="12" Foreground="#64748B"/>
         </StackPanel>
       </Grid>
+
+      <Grid x:Name="FloatingSurface" Grid.RowSpan="4" Width="60" Height="54" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+        <Border Width="48" Height="48" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="10" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"/>
+        <Image x:Name="FloatingLogoImage" Width="34" Height="34" Margin="7,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" SnapsToDevicePixels="True"/>
+        <Border x:Name="FloatingCountBadge" Width="20" Height="20" CornerRadius="10" Margin="0,1,0,0" Background="#10B981" BorderBrush="#FFFFFF" BorderThickness="2" HorizontalAlignment="Right" VerticalAlignment="Top">
+          <TextBlock x:Name="FloatingCountText" Text="0" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+      </Grid>
     </Grid>
   </Border>
 </Window>
@@ -286,24 +349,25 @@ $HeaderRow = $window.FindName("HeaderRow")
 $SummaryRow = $window.FindName("SummaryRow")
 $ContentRow = $window.FindName("ContentRow")
 $FooterRow = $window.FindName("FooterRow")
+$LogoColumn = $window.FindName("LogoColumn")
 $TitleColumn = $window.FindName("TitleColumn")
-$SpacerColumn = $window.FindName("SpacerColumn")
 $SummaryCard = $window.FindName("SummaryCard")
 $ContentArea = $window.FindName("ContentArea")
 $FooterBar = $window.FindName("FooterBar")
 $Chrome = $window.FindName("Chrome")
 $Header = $window.FindName("Header")
+$FloatingSurface = $window.FindName("FloatingSurface")
+$LogoHost = $window.FindName("LogoHost")
+$LogoBackdrop = $window.FindName("LogoBackdrop")
 $LogoImage = $window.FindName("LogoImage")
+$FloatingLogoImage = $window.FindName("FloatingLogoImage")
 $FloatingCountBadge = $window.FindName("FloatingCountBadge")
 $FloatingCountText = $window.FindName("FloatingCountText")
 $TitleText = $window.FindName("TitleText")
 $SubtitleText = $window.FindName("SubtitleText")
-$FloatButton = $window.FindName("FloatButton")
-$CompactButton = $window.FindName("CompactButton")
+$DetailsButton = $window.FindName("DetailsButton")
 $PinButton = $window.FindName("PinButton")
-$ScanButton = $window.FindName("ScanButton")
-$LangButton = $window.FindName("LangButton")
-$MinButton = $window.FindName("MinButton")
+$RefreshButton = $window.FindName("RefreshButton")
 $CloseButton = $window.FindName("CloseButton")
 $MonitoringText = $window.FindName("MonitoringText")
 $AutoScanText = $window.FindName("AutoScanText")
@@ -317,9 +381,22 @@ $FooterText = $window.FindName("FooterText")
 
 $window.Icon = ImageSource (Join-Path $script:Assets "window-icon.png")
 $LogoImage.Source = ImageSource (Join-Path $script:Assets "panel-logo.png")
+$FloatingLogoImage.Source = ImageSource (Join-Path $script:Assets "panel-logo.png")
 
 function Brush($hex) {
   return New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($hex))
+}
+
+function Update-PinButton {
+  if ($window.Topmost) {
+    $PinButton.Background = Brush "#009B63"
+    $PinButton.Foreground = Brush "#FFFFFF"
+    $PinButton.BorderBrush = Brush "#007A4D"
+  } else {
+    $PinButton.Background = Brush "#00000000"
+    $PinButton.Foreground = Brush "#64748B"
+    $PinButton.BorderBrush = Brush "#00000000"
+  }
 }
 
 function Set-PanelShadow([bool]$enabled) {
@@ -395,8 +472,6 @@ function Apply-CompactMode {
     $FooterRow.Height = New-Object System.Windows.GridLength 0
     $SummaryCard.Visibility = "Collapsed"
     $FooterBar.Visibility = "Collapsed"
-    $LangButton.Visibility = "Collapsed"
-    $CompactButton.Content = T "Expand"
     if ($window.Height -gt 460) { $window.Height = 420 }
     if ($window.Width -gt 540) { $window.Width = 520 }
     Fit-WindowToCurrentScreen
@@ -405,8 +480,6 @@ function Apply-CompactMode {
     $FooterRow.Height = New-Object System.Windows.GridLength 34
     $SummaryCard.Visibility = "Visible"
     $FooterBar.Visibility = "Visible"
-    $LangButton.Visibility = "Visible"
-    $CompactButton.Content = T "Compact"
     if ($window.Height -lt 640) { $window.Height = 680 }
     if ($window.Width -lt 620) { $window.Width = 620 }
     Fit-WindowToCurrentScreen
@@ -447,33 +520,33 @@ function Fit-WindowToCurrentScreen {
 function Apply-FloatingMode {
   if ($script:isFloating) {
     Set-PanelShadow $false
-    $HeaderRow.Height = New-Object System.Windows.GridLength 46
+    $Chrome.Margin = "0"
+    $Chrome.Background = Brush "#00000000"
+    $Chrome.BorderBrush = Brush "#00000000"
+    $Chrome.BorderThickness = "0"
+    $Chrome.CornerRadius = "0"
+    $Header.Visibility = "Collapsed"
+    $FloatingSurface.Visibility = "Visible"
+    $HeaderRow.Height = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
     $SummaryRow.Height = New-Object System.Windows.GridLength 0
     $ContentRow.Height = New-Object System.Windows.GridLength 0
     $FooterRow.Height = New-Object System.Windows.GridLength 0
     $SummaryCard.Visibility = "Collapsed"
     $ContentArea.Visibility = "Collapsed"
     $FooterBar.Visibility = "Collapsed"
-    $FloatButton.Visibility = "Collapsed"
-    $CompactButton.Visibility = "Collapsed"
+    $DetailsButton.Visibility = "Collapsed"
     $PinButton.Visibility = "Collapsed"
-    $ScanButton.Visibility = "Collapsed"
-    $LangButton.Visibility = "Collapsed"
-    $MinButton.Visibility = "Collapsed"
+    $RefreshButton.Visibility = "Collapsed"
     $CloseButton.Visibility = "Collapsed"
-    $FloatingCountBadge.Visibility = "Visible"
     $SubtitleText.Visibility = "Collapsed"
-    $TitleText.FontSize = 15
-    $TitleColumn.Width = New-Object System.Windows.GridLength 0
-    $SpacerColumn.Width = New-Object System.Windows.GridLength 0
     $TitleText.Text = ""
     $FloatingCountText.Text = [string]$script:services.Count
-    $window.MinWidth = 56
-    $window.MinHeight = 52
-    $window.MaxWidth = 62
-    $window.MaxHeight = 58
-    $window.Width = 62
-    $window.Height = 58
+    $window.MinWidth = 60
+    $window.MinHeight = 54
+    $window.MaxWidth = 60
+    $window.MaxHeight = 54
+    $window.Width = 60
+    $window.Height = 54
     return
   }
 
@@ -481,22 +554,34 @@ function Apply-FloatingMode {
   $window.MaxHeight = [Double]::PositiveInfinity
   $window.MinWidth = 420
   $window.MinHeight = 320
+  $Chrome.Margin = "4"
+  $Chrome.Background = Brush "#F8FAFC"
+  $Chrome.BorderBrush = Brush "#D8E0EA"
+  $Chrome.BorderThickness = "1"
+  $Chrome.CornerRadius = "13"
+  $Header.Visibility = "Visible"
+  $FloatingSurface.Visibility = "Collapsed"
+  $Header.Margin = "10,7,10,7"
+  $LogoColumn.Width = New-Object System.Windows.GridLength 34
+  $LogoHost.Width = 34
+  $LogoHost.Height = 34
+  $LogoBackdrop.Width = 34
+  $LogoBackdrop.Height = 34
+  $LogoBackdrop.CornerRadius = "17"
+  $LogoBackdrop.Background = Brush "#E8F7F0"
+  $LogoImage.Width = 30
+  $LogoImage.Height = 30
   Set-PanelShadow $true
   $HeaderRow.Height = New-Object System.Windows.GridLength 78
   $ContentRow.Height = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
   $ContentArea.Visibility = "Visible"
-  $FloatButton.Visibility = "Collapsed"
-  $CompactButton.Visibility = "Visible"
+  $DetailsButton.Visibility = "Visible"
   $PinButton.Visibility = "Visible"
-  $ScanButton.Visibility = "Visible"
-  $LangButton.Visibility = "Visible"
-  $MinButton.Visibility = "Visible"
+  $RefreshButton.Visibility = "Visible"
   $CloseButton.Visibility = "Visible"
-  $FloatingCountBadge.Visibility = "Collapsed"
   $SubtitleText.Visibility = "Visible"
   $TitleText.FontSize = 17
-  $TitleColumn.Width = New-Object System.Windows.GridLength 210
-  $SpacerColumn.Width = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
+  $TitleColumn.Width = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
   $TitleText.Text = T "AppTitle"
   $SubtitleText.Text = T "Subtitle"
   $window.Width = 620
@@ -507,18 +592,18 @@ function Apply-FloatingMode {
 
 function SectionHeader($label, $count, $accent, $soft) {
   $border = New-Object System.Windows.Controls.Border
-  $border.Height = 40
+  $border.Height = 38
   $border.Margin = "0,0,0,0"
   $grid = New-Object System.Windows.Controls.Grid
   $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = "6" }))
   $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = "Auto" }))
   $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = "Auto" }))
   $rail = New-Object System.Windows.Shapes.Rectangle
-  $rail.Width = 4; $rail.Height = 28; $rail.RadiusX = 2; $rail.RadiusY = 2
+  $rail.Width = 4; $rail.Height = 24; $rail.RadiusX = 2; $rail.RadiusY = 2
   $rail.Fill = Brush $accent; $rail.VerticalAlignment = "Center"
   [System.Windows.Controls.Grid]::SetColumn($rail, 0); $grid.Children.Add($rail) | Out-Null
   $text = New-Object System.Windows.Controls.TextBlock
-  $text.Text = $label; $text.FontSize = 17; $text.FontWeight = "Bold"; $text.Foreground = Brush "#111827"; $text.Margin = "10,0,12,0"; $text.VerticalAlignment = "Center"
+  $text.Text = $label; $text.FontSize = 16; $text.FontWeight = "Bold"; $text.Foreground = Brush "#111827"; $text.Margin = "10,0,10,0"; $text.VerticalAlignment = "Center"
   [System.Windows.Controls.Grid]::SetColumn($text, 1); $grid.Children.Add($text) | Out-Null
   $pill = New-Object System.Windows.Controls.Border
   $pill.CornerRadius = "12"; $pill.Background = Brush $soft; $pill.Padding = "9,3"; $pill.VerticalAlignment = "Center"
@@ -536,7 +621,7 @@ function RowView($service, $kind) {
   if ($kind -eq "offline") { $accent = "#94A3B8"; $soft = "#F1F5F9" }
 
   $row = New-Object System.Windows.Controls.Border
-  $row.Height = 86
+  $row.Height = 78
   $row.Margin = "0,0,0,1"
   $row.Background = Brush "#FFFFFF"
   $row.BorderBrush = Brush "#E6ECF2"
@@ -551,7 +636,7 @@ function RowView($service, $kind) {
   $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = "74" }))
 
   $rail = New-Object System.Windows.Shapes.Rectangle
-  $rail.Width = 4; $rail.Height = 64; $rail.RadiusX = 2; $rail.RadiusY = 2
+  $rail.Width = 4; $rail.Height = 56; $rail.RadiusX = 2; $rail.RadiusY = 2
   $rail.Fill = Brush $accent; $rail.VerticalAlignment = "Center"; $rail.HorizontalAlignment = "Left"
   [System.Windows.Controls.Grid]::SetColumn($rail, 0); $grid.Children.Add($rail) | Out-Null
 
@@ -560,14 +645,14 @@ function RowView($service, $kind) {
   [System.Windows.Controls.Grid]::SetColumn($dot, 1); $grid.Children.Add($dot) | Out-Null
 
   $iconBorder = New-Object System.Windows.Controls.Border
-  $iconBorder.Width = 38; $iconBorder.Height = 38; $iconBorder.CornerRadius = "10"; $iconBorder.Background = Brush "#FFFFFF"; $iconBorder.BorderBrush = Brush "#E2E8F0"; $iconBorder.BorderThickness = "1"; $iconBorder.VerticalAlignment = "Center"
+  $iconBorder.Width = 36; $iconBorder.Height = 36; $iconBorder.CornerRadius = "9"; $iconBorder.Background = Brush "#FFFFFF"; $iconBorder.BorderBrush = Brush "#E2E8F0"; $iconBorder.BorderThickness = "1"; $iconBorder.VerticalAlignment = "Center"
   $img = New-Object System.Windows.Controls.Image
-  $img.Width = 30; $img.Height = 30; $img.Source = ImageSource (Get-AssetPath $service.Framework)
+  $img.Width = 28; $img.Height = 28; $img.Source = ImageSource (Get-AssetPath $service.Framework)
   $iconBorder.Child = $img
   [System.Windows.Controls.Grid]::SetColumn($iconBorder, 2); $grid.Children.Add($iconBorder) | Out-Null
 
   $info = New-Object System.Windows.Controls.Grid
-  $info.Margin = "4,12,8,10"
+  $info.Margin = "4,8,8,8"
   $info.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = "32" }))
   $info.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = "28" }))
   $info.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = "150" }))
@@ -645,18 +730,16 @@ function EmptyView {
 
 function Apply-Language {
   if ($script:isFloating) {
-    $FloatButton.Content = T "List"
-    $CompactButton.Content = if ($script:isCompact) { T "Expand" } else { T "Compact" }
     Apply-FloatingMode
     return
   }
   $TitleText.Text = T "AppTitle"
   $SubtitleText.Text = T "Subtitle"
-  $FloatButton.Content = T "Float"
-  $CompactButton.Content = if ($script:isCompact) { T "Expand" } else { T "Compact" }
-  $PinButton.Content = T "Pin"
-  $ScanButton.Content = T "Scan"
-  $LangButton.Content = if ($script:lang -eq "zh") { "$(Z '5Lit')/EN" } else { "ZH/EN" }
+  $DetailsButton.ToolTip = if ($script:isCompact) { T "Expand" } else { T "Compact" }
+  $PinButton.ToolTip = T "Pin"
+  Update-PinButton
+  $RefreshButton.ToolTip = T "Scan"
+  $CloseButton.ToolTip = T "HideToTray"
   $MonitoringText.Text = T "Monitoring"
   $AutoScanText.Text = T "AutoScan"
   $RunningText.Text = T "WebEntries"
@@ -818,12 +901,6 @@ function Try-DragWindow($eventArgs) {
     $node = $eventArgs.OriginalSource
     while ($node) {
       if ($node -is [System.Windows.Controls.Button]) { return }
-      if ($node -is [System.Windows.Controls.TextBlock]) {
-        if ($node.Name -in @("FloatButton", "CompactButton", "PinButton", "ScanButton", "LangButton")) { return }
-      }
-      if ($node -is [System.Windows.FrameworkElement]) {
-        if ($node.Name -in @("FloatButton", "CompactButton", "PinButton", "ScanButton", "LangButton")) { return }
-      }
       try { $node = [System.Windows.Media.VisualTreeHelper]::GetParent($node) } catch { $node = $null }
     }
     if ($eventArgs.ClickCount -ge 2) {
@@ -895,28 +972,17 @@ $Header.Add_MouseMove({ param($sender, $eventArgs) Handle-PanelMouseMove $sender
 $Chrome.Add_MouseMove({ param($sender, $eventArgs) Handle-PanelMouseMove $sender $eventArgs })
 $Header.Add_MouseLeftButtonUp({ param($sender, $eventArgs) Handle-PanelMouseUp $sender $eventArgs })
 $Chrome.Add_MouseLeftButtonUp({ param($sender, $eventArgs) Handle-PanelMouseUp $sender $eventArgs })
-$MinButton.Add_Click({ Collapse-ToFloatingIcon })
-$CloseButton.Add_Click({ $window.Hide() })
-$PinButton.Add_MouseLeftButtonUp({
-  $window.Topmost = -not $window.Topmost
-  $PinButton.Foreground = if ($window.Topmost) { Brush "#009B63" } else { Brush "#64748B" }
-})
-$ScanButton.Add_MouseLeftButtonUp({ Start-ScanJob })
-$FloatButton.Add_MouseLeftButtonUp({
-  $script:isFloating = -not $script:isFloating
-  Apply-Language
-  Apply-FloatingMode
-})
-$CompactButton.Add_MouseLeftButtonUp({
+$DetailsButton.Add_Click({
   $script:isCompact = -not $script:isCompact
   Apply-CompactMode
-})
-function Switch-Language {
-  $script:lang = if ($script:lang -eq "zh") { "en" } else { "zh" }
   Apply-Language
-}
-
-$LangButton.Add_MouseLeftButtonUp({ Switch-Language })
+})
+$PinButton.Add_Click({
+  $window.Topmost = -not $window.Topmost
+  Update-PinButton
+})
+$RefreshButton.Add_Click({ Start-ScanJob })
+$CloseButton.Add_Click({ $window.Hide() })
 
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(500)
